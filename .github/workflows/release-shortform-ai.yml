@@ -1,0 +1,69 @@
+name: Release shortform-ai
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build
+
+      - name: Install shortform-ai runtime dependencies
+        run: python -m pip install -e .
+
+      - name: Run CLI tests
+        run: make test-cli
+
+      - name: Run source secret check
+        run: python scripts/check_shortform_release.py
+
+      - name: Build shortform-ai wheel and sdist
+        run: python -m build . --outdir dist/shortform-ai
+
+      - name: Run artifact secret check
+        run: python scripts/check_shortform_release.py --dist dist/shortform-ai
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: shortform-ai-dist
+          path: dist/shortform-ai/*
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: shortform-ai-dist
+          path: dist
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

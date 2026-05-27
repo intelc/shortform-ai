@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shortform-ai"
+version = "0.1.11"
+description = "Local-first CLI for short-form video and creator analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [
+  { name = "Reelysis" }
+]
+dependencies = [
+  "cryptography>=42.0",
+  "requests>=2.31.0",
+  "yt-dlp>=2024.1.1"
+]
+
+[project.optional-dependencies]
+local-transcribe = [
+  "faster-whisper>=1.0"
+]
+
+[project.scripts]
+shortform-ai = "content_ai_runtime.cli:main"
+content-ai = "content_ai_runtime.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["content_ai_runtime*", "shortform_ai*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
