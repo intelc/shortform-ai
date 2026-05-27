@@ -3,8 +3,8 @@ class ShortformAi < Formula
 
   desc "Local-first CLI for short-form video and creator analysis"
   homepage "https://github.com/intelc/shortform-ai"
-  url "https://files.pythonhosted.org/packages/1b/8a/2056b66b87c07074fb9e1693be6453d6e1020691e1621bda30e8ee13eb01/shortform_ai-0.1.13.tar.gz"
-  sha256 "17b6c39e386cb0d157eeab2729a9912e60e81ab79057cad9deef9ca393a9c1e8"
+  url "https://files.pythonhosted.org/packages/1c/0e/a4d8ce64f21db448473014ba661a992bd8dc0cf7ae55f997d82e39ca44b3/shortform_ai-0.1.14.tar.gz"
+  sha256 "4799fad4f2ff0f19f69bf2081cb6741f23f6d60150ee401400c76c31d5d278be"
   license "MIT"
 
   depends_on "rust" => :build
@@ -61,7 +61,7 @@ class ShortformAi < Formula
   end
 
   test do
-    assert_match "shortform-ai 0.1.13", shell_output("#{bin}/shortform-ai --version")
+    assert_match "shortform-ai 0.1.14", shell_output("#{bin}/shortform-ai --version")
     output = shell_output("#{bin}/shortform-ai doctor")
     assert_match "content_ai_version", output
     assert_match "shortform_ai_version", output
