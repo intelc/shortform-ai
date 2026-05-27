@@ -115,5 +115,3 @@ python3.12 -m venv .venv
 The CLI reads a user's own local Instagram Chrome session only after an
 explicit `shortform-ai auth instagram --from-chrome` command. Session values are
 redacted from output and are stored in local secure storage when available.
-
-`content-ai` remains available as a backwards-compatible command alias.

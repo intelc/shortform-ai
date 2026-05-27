@@ -25,7 +25,6 @@ local-transcribe = [
 
 [project.scripts]
 shortform-ai = "content_ai_runtime.cli:main"
-content-ai = "content_ai_runtime.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
