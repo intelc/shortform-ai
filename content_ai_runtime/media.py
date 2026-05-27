@@ -10,6 +10,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 
+DEFAULT_SCENE_THRESHOLD = 24.0
+SCENE_THRESHOLD_ENV = "SHORTFORM_AI_SCENE_THRESHOLD"
+
+
 def is_url(value: str) -> bool:
     parsed = urlparse(value)
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
@@ -32,6 +36,17 @@ def command_path(name: str) -> str | None:
 
 def have_command(name: str) -> bool:
     return command_path(name) is not None
+
+
+def scene_threshold() -> float:
+    value = os.getenv(SCENE_THRESHOLD_ENV, "").strip()
+    if not value:
+        return DEFAULT_SCENE_THRESHOLD
+    try:
+        threshold = float(value)
+    except ValueError:
+        return DEFAULT_SCENE_THRESHOLD
+    return threshold if threshold > 0 else DEFAULT_SCENE_THRESHOLD
 
 
 def ffprobe_duration(video_path: Path) -> float | None:
@@ -163,7 +178,7 @@ def detect_shots(video_path: Path) -> list[dict]:
 
     video = open_video(str(video_path))
     manager = SceneManager()
-    manager.add_detector(ContentDetector(threshold=30.0))
+    manager.add_detector(ContentDetector(threshold=scene_threshold()))
     manager.detect_scenes(video)
     scenes = manager.get_scene_list()
     shots = []

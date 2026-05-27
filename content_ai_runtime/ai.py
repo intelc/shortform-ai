@@ -25,13 +25,36 @@ ANALYSIS_SCHEMA = {
     "schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["visual_summary", "strategy_summary", "on_screen_text", "ideas"],
+        "required": ["visual_summary", "strategy_summary", "on_screen_text", "timeline", "ideas"],
         "properties": {
             "visual_summary": {"type": "string"},
             "strategy_summary": {"type": "string"},
             "on_screen_text": {
                 "type": "array",
                 "items": {"type": "string"},
+            },
+            "timeline": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "beat_number",
+                        "start_time",
+                        "end_time",
+                        "visual_evidence",
+                        "transcript_excerpt",
+                        "inferred_purpose",
+                    ],
+                    "properties": {
+                        "beat_number": {"type": "integer"},
+                        "start_time": {"type": "number"},
+                        "end_time": {"type": "number"},
+                        "visual_evidence": {"type": "string"},
+                        "transcript_excerpt": {"type": "string"},
+                        "inferred_purpose": {"type": "string"},
+                    },
+                },
             },
             "ideas": {
                 "type": "array",

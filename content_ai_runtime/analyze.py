@@ -46,6 +46,8 @@ REQUIRED_ARTIFACTS = [
     "transcript.srt",
     "onscreen_text.md",
     "shots.json",
+    "timeline.json",
+    "timeline.md",
     "visual.md",
     "report.md",
     "comments.json",
@@ -240,8 +242,12 @@ def _analysis_prompt(shots: list[dict]) -> str:
         "keys: visual_summary (string), strategy_summary (string), on_screen_text "
         "(array of strings, every readable visible caption/text overlay in sequence "
         "from the contact sheet and keyframes; preserve wording as exactly as possible), "
+        "timeline (array of reverse-engineered beat objects with beat_number, start_time, "
+        "end_time, visual_evidence, transcript_excerpt, inferred_purpose), "
         "ideas (array of objects with title, description, reasoning). Keep it concrete "
         "and grounded. Treat on-screen text as separate from audio transcription. "
+        "Use the detected shot times as the timeline spine, but combine adjacent shots "
+        "when they are clearly one creator-intent beat. "
         f"There are {len(shots)} detected shots."
     )
 
@@ -252,6 +258,16 @@ def _agent_response_example() -> dict:
         "strategy_summary": "Explain why the reel works and what a creator should learn from it.",
         "on_screen_text": [
             "Transcribe visible captions/text overlays in order.",
+        ],
+        "timeline": [
+            {
+                "beat_number": 1,
+                "start_time": 0.0,
+                "end_time": 2.5,
+                "visual_evidence": "What appears on screen in this beat.",
+                "transcript_excerpt": "Relevant audio or empty string.",
+                "inferred_purpose": "Hook, setup, proof, reveal, payoff, CTA, etc.",
+            }
         ],
         "ideas": [
             {
@@ -294,6 +310,8 @@ Source: {source}
 - `transcript.md`
 - `onscreen_text.md`
 - `shots.json`
+- `timeline.md`
+- `timeline.json`
 - `audience.md`
 - `comments.json`
 
@@ -318,6 +336,8 @@ The JSON keys are:
 - `visual_summary`: concise grounded visual analysis.
 - `strategy_summary`: why the short-form piece works and what to learn.
 - `on_screen_text`: ordered visible caption/text overlay strings.
+- `timeline`: reverse-engineered sequence of content beats with timing,
+  visual evidence, transcript excerpt, and inferred purpose.
 - `ideas`: objects with `title`, `description`, and `reasoning`.
 
 ## Analysis Prompt
@@ -362,6 +382,7 @@ def _validate_agent_response(payload: object) -> dict:
         "visual_summary": visual_summary,
         "strategy_summary": strategy_summary,
         "on_screen_text": on_screen_text,
+        "timeline": _normalize_timeline(payload.get("timeline"), []),
         "ideas": ideas,
     }
 
@@ -419,10 +440,17 @@ def apply_agent_response(analysis_dir: Path, response_path: Path | None = None) 
     audience_text = _strip_markdown_heading((analysis_dir / "audience.md").read_text(encoding="utf-8")) if (analysis_dir / "audience.md").exists() else "No comments fetched for this analysis."
     contact_sheet = analysis_dir / "contact_sheet.jpg"
     contact_sheet_path = contact_sheet if contact_sheet.exists() else None
+    timeline_payload = _read_json(analysis_dir / "timeline.json", {"timeline": []})
+    fallback_timeline = timeline_payload.get("timeline", []) if isinstance(timeline_payload, dict) else []
+    if not isinstance(fallback_timeline, list):
+        fallback_timeline = []
+    timeline = _normalize_timeline(response.get("timeline"), fallback_timeline)
 
     _write_text(analysis_dir / "visual.md", f"# Visual Analysis\n\n{response['visual_summary']}")
     _write_text(analysis_dir / "strategy.md", f"# Strategy\n\n{response['strategy_summary']}")
     _write_text(analysis_dir / "onscreen_text.md", f"# On-Screen Text\n\n{_format_on_screen_text(response['on_screen_text'])}")
+    _write_json(analysis_dir / "timeline.json", {"timeline": timeline})
+    _write_text(analysis_dir / "timeline.md", _render_timeline_markdown(timeline))
     _write_json(analysis_dir / "ideas.json", {"ideas": response["ideas"]})
     _write_text(
         analysis_dir / "report.md",
@@ -435,6 +463,7 @@ def apply_agent_response(analysis_dir: Path, response_path: Path | None = None) 
             instagram=instagram,
             transcript_text=transcript_text,
             on_screen_text=response["on_screen_text"],
+            timeline=timeline,
             visual_summary=response["visual_summary"],
             strategy_summary=response["strategy_summary"],
             ideas=response["ideas"],
@@ -589,6 +618,96 @@ def _format_on_screen_text(lines: list[str]) -> str:
     return "\n".join(f"- {line}" for line in cleaned)
 
 
+def _shot_float(shot: dict, key: str, default: float = 0.0) -> float:
+    try:
+        return float(shot.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _transcript_excerpt_for_window(segments: list[dict], start: float, end: float, max_chars: int = 220) -> str:
+    excerpts: list[str] = []
+    for segment in segments:
+        seg_start = _shot_float(segment, "start")
+        seg_end = _shot_float(segment, "end", seg_start)
+        if seg_end < start or seg_start > end:
+            continue
+        text = str(segment.get("text") or "").strip()
+        if text:
+            excerpts.append(text)
+    excerpt = " ".join(excerpts).strip()
+    if len(excerpt) > max_chars:
+        excerpt = excerpt[: max_chars - 3].rstrip() + "..."
+    return excerpt
+
+
+def _build_default_timeline(shots: list[dict], transcript_segments: list[dict]) -> list[dict]:
+    timeline: list[dict] = []
+    for index, shot in enumerate(shots, 1):
+        start = _shot_float(shot, "start_time")
+        end = _shot_float(shot, "end_time", start)
+        timeline.append(
+            {
+                "beat_number": int(shot.get("shot_number") or index),
+                "start_time": start,
+                "end_time": end,
+                "duration": max(end - start, 0.0),
+                "visual_evidence": f"Detected shot {int(shot.get('shot_number') or index)}.",
+                "transcript_excerpt": _transcript_excerpt_for_window(transcript_segments, start, end),
+                "inferred_purpose": "Pending AI synthesis.",
+                "source": "shot_detection",
+            }
+        )
+    return timeline
+
+
+def _normalize_timeline(raw_timeline: object, fallback: list[dict]) -> list[dict]:
+    if not isinstance(raw_timeline, list):
+        return fallback
+    timeline: list[dict] = []
+    for index, item in enumerate(raw_timeline, 1):
+        if not isinstance(item, dict):
+            continue
+        start = _shot_float(item, "start_time")
+        end = _shot_float(item, "end_time", start)
+        timeline.append(
+            {
+                "beat_number": int(item.get("beat_number") or index),
+                "start_time": start,
+                "end_time": end,
+                "duration": max(end - start, 0.0),
+                "visual_evidence": str(item.get("visual_evidence") or "").strip(),
+                "transcript_excerpt": str(item.get("transcript_excerpt") or "").strip(),
+                "inferred_purpose": str(item.get("inferred_purpose") or "").strip(),
+                "source": "ai_synthesis",
+            }
+        )
+    return timeline or fallback
+
+
+def _format_timeline(timeline: list[dict]) -> str:
+    if not timeline:
+        return "No timeline generated."
+    lines: list[str] = []
+    for item in timeline:
+        start = _shot_float(item, "start_time")
+        end = _shot_float(item, "end_time", start)
+        purpose = str(item.get("inferred_purpose") or "Beat").strip()
+        evidence = str(item.get("visual_evidence") or "").strip()
+        transcript = str(item.get("transcript_excerpt") or "").strip()
+        line = f"- {start:.1f}-{end:.1f}s: {purpose}"
+        if evidence:
+            line += f" - {evidence}"
+        if transcript:
+            line += f" Transcript: {transcript}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _render_timeline_markdown(timeline: list[dict]) -> str:
+    return "# Reverse-Engineered Timeline\n\n" + _format_timeline(timeline)
+
+
 def _artifact_link_path(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
@@ -606,6 +725,7 @@ def _render_report(
     instagram: dict,
     transcript_text: str,
     on_screen_text: list[str],
+    timeline: list[dict],
     visual_summary: str,
     strategy_summary: str,
     ideas: list,
@@ -642,6 +762,10 @@ def _render_report(
         "## Audio Transcript",
         "",
         transcript_excerpt or "No transcript generated.",
+        "",
+        "## Reverse-Engineered Timeline",
+        "",
+        _format_timeline(timeline),
         "",
         "## Visual",
         "",
@@ -731,6 +855,7 @@ def analyze_source(
         transcribe,
         transcribe_model,
     )
+    timeline = _build_default_timeline(shots, transcript_segments)
 
     if not transcript_text.strip():
         transcription_warning = transcription_warning or _transcription_required_message(transcribe, transcribe_model)
@@ -753,6 +878,7 @@ def analyze_source(
                 "video_acquired": True,
                 "shot_detection": True,
                 "keyframes": bool(keyframes),
+                "timeline": bool(timeline),
                 "transcription": False,
                 "instagram_session_used": instagram_session_used,
                 "instagram_metadata": instagram_metadata.get("status") == "fetched",
@@ -767,6 +893,8 @@ def analyze_source(
         _write_json(out_dir / "reel.json", reel)
         _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata))
         _write_json(out_dir / "shots.json", {"shots": shots})
+        _write_json(out_dir / "timeline.json", {"timeline": timeline})
+        _write_text(out_dir / "timeline.md", _render_timeline_markdown(timeline))
         _write_text(out_dir / "transcript.md", f"# Transcript\n\n{transcription_warning}")
         _write_text(out_dir / "transcript.srt", _empty_srt())
         _write_text(out_dir / "onscreen_text.md", "# On-Screen Text\n\nSkipped because transcription is required first.")
@@ -786,6 +914,7 @@ def analyze_source(
                 instagram=instagram_metadata,
                 transcript_text=transcription_warning,
                 on_screen_text=[],
+                timeline=timeline,
                 visual_summary="Skipped because transcription is required first.",
                 strategy_summary="Skipped because transcription is required first.",
                 ideas=[],
@@ -825,6 +954,7 @@ def analyze_source(
             raw_ideas = codex_result.get("ideas")
             if isinstance(raw_ideas, list):
                 ideas = raw_ideas
+            timeline = _normalize_timeline(codex_result.get("timeline"), timeline)
         except Exception as exc:
             analysis_warning = (
                 f"Codex CLI analysis failed ({exc}). "
@@ -848,6 +978,7 @@ def analyze_source(
                 raw_ideas = openai_result.get("ideas")
                 if isinstance(raw_ideas, list):
                     ideas = raw_ideas
+                timeline = _normalize_timeline(openai_result.get("timeline"), timeline)
             except Exception as exc:
                 analysis_warning = f"OpenAI vision analysis failed ({exc})."
                 if ai == "api":
@@ -872,6 +1003,7 @@ def analyze_source(
             "video_acquired": True,
             "shot_detection": True,
             "keyframes": bool(keyframes),
+            "timeline": bool(timeline),
             "transcription": bool(transcript_text),
             "agent_synthesis": False if ai_mode == "agent" else bool(ai_mode),
             "instagram_session_used": instagram_session_used,
@@ -889,6 +1021,8 @@ def analyze_source(
     _write_json(out_dir / "reel.json", reel)
     _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata))
     _write_json(out_dir / "shots.json", {"shots": shots})
+    _write_json(out_dir / "timeline.json", {"timeline": timeline})
+    _write_text(out_dir / "timeline.md", _render_timeline_markdown(timeline))
     _write_text(out_dir / "transcript.md", f"# Audio Transcript\n\n{transcript_text or 'No transcript generated in this local runtime pass.'}")
     _write_text(out_dir / "transcript.srt", _segments_to_srt(transcript_segments))
     _write_text(out_dir / "onscreen_text.md", f"# On-Screen Text\n\n{_format_on_screen_text(on_screen_text)}")
@@ -908,6 +1042,7 @@ def analyze_source(
             instagram=instagram_metadata,
             transcript_text=transcript_text,
             on_screen_text=on_screen_text,
+            timeline=timeline,
             visual_summary=visual_summary,
             strategy_summary=strategy_summary,
             ideas=ideas,

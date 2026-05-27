@@ -128,6 +128,8 @@ interface.
    - `report.md`
    - `contact_sheet.jpg`
    - `shots.json`
+   - `timeline.md`
+   - `timeline.json`
    - `transcript.md`
    - `onscreen_text.md`
    - `visual.md`
@@ -151,9 +153,11 @@ the JSON response, run `shortform-ai agent apply <analysis-dir>`, then use the
 updated `report.md` for the final answer.
 
 Prefer `report.md` as the first read for a rich overview, then verify details
-against `manifest.json`, `media.json`, `onscreen_text.md`, the audio transcript,
-ideas, and comments. Treat `onscreen_text.md` as the main narrative transcript
-for caption-heavy reels; `transcript.md` is the audio track and may only contain
+against `manifest.json`, `media.json`, `timeline.md`, `timeline.json`,
+`onscreen_text.md`, the audio transcript, ideas, and comments. Treat
+`timeline.md` as the reverse-engineered beat/edit timeline grounded in detected
+shot boundaries; treat `onscreen_text.md` as the main narrative transcript for
+caption-heavy reels; `transcript.md` is the audio track and may only contain
 music lyrics or ambient speech. Include the creator and aggregate metrics from
 the report or `media.json`/`reel.json` in the final inline answer. If a metric
 such as views is unavailable or `null`, say it is unavailable; do not estimate

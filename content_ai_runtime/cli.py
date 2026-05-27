@@ -565,7 +565,7 @@ def cmd_bootstrap_analyze(args: argparse.Namespace) -> int:
         bootstrap["next_steps"] = [
             f"Read artifacts in {out}",
             "Start from report.md and include contact_sheet.jpg inline when present.",
-            "Verify details against manifest.json, reel.json, media.json, transcript.md, visual.md, strategy.md, ideas.json, and audience.md.",
+            "Verify details against manifest.json, reel.json, media.json, timeline.md, timeline.json, transcript.md, visual.md, strategy.md, ideas.json, and audience.md.",
         ]
     (out / "bootstrap.json").write_text(json.dumps(bootstrap, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"bootstrap summary written to {out / 'bootstrap.json'}")

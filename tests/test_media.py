@@ -38,6 +38,14 @@ class MediaTests(TestCase):
     def test_ffprobe_duration_without_ffprobe_is_none(self, _command_path):
         self.assertIsNone(media.ffprobe_duration(Path("video.mp4")))
 
+    @mock.patch.dict("os.environ", {}, clear=True)
+    def test_scene_threshold_default_is_more_sensitive(self):
+        self.assertEqual(media.scene_threshold(), 24.0)
+
+    @mock.patch.dict("os.environ", {"SHORTFORM_AI_SCENE_THRESHOLD": "18.5"}, clear=True)
+    def test_scene_threshold_can_be_overridden(self):
+        self.assertEqual(media.scene_threshold(), 18.5)
+
     @mock.patch("content_ai_runtime.media.command_path", return_value="/usr/bin/ffmpeg")
     @mock.patch("content_ai_runtime.media.subprocess.run")
     def test_create_contact_sheet_uses_ffmpeg_tile(self, run, _command_path):

@@ -102,8 +102,11 @@ class AnalyzeTests(TestCase):
             report = (tmp_path / "out" / "report.md").read_text()
             self.assertIn("![Contact sheet](contact_sheet.jpg)", report)
             self.assertIn("## On-Screen Text", report)
+            self.assertIn("## Reverse-Engineered Timeline", report)
             self.assertIn("- caption", report)
             self.assertIn("## Audio Transcript", report)
+            self.assertTrue((tmp_path / "out" / "timeline.json").exists())
+            self.assertIn("# Reverse-Engineered Timeline", (tmp_path / "out" / "timeline.md").read_text())
             self.assertIn("# On-Screen Text", (tmp_path / "out" / "onscreen_text.md").read_text())
 
     @mock.patch(
@@ -154,11 +157,14 @@ class AnalyzeTests(TestCase):
             self.assertEqual(manifest["status"], "needs_agent_synthesis")
             self.assertEqual(manifest["ai_mode"], "agent")
             self.assertFalse(manifest["capabilities"]["agent_synthesis"])
+            self.assertTrue(manifest["capabilities"]["timeline"])
             self.assertTrue((tmp_path / "out" / "agent_request.md").exists())
             self.assertTrue((tmp_path / "out" / "agent_schema.json").exists())
             self.assertTrue((tmp_path / "out" / "agent_response.example.json").exists())
+            self.assertTrue((tmp_path / "out" / "timeline.json").exists())
             request = (tmp_path / "out" / "agent_request.md").read_text()
             self.assertIn("Do not call `codex exec`", request)
+            self.assertIn("timeline.json", request)
             self.assertIn("agent_response.json", request)
 
     def test_apply_agent_response_updates_report_and_manifest(self):
@@ -179,6 +185,14 @@ class AnalyzeTests(TestCase):
                     "visual_summary": "visual from host agent",
                     "strategy_summary": "strategy from host agent",
                     "on_screen_text": ["caption"],
+                    "timeline": [{
+                        "beat_number": 1,
+                        "start_time": 0.0,
+                        "end_time": 1.0,
+                        "visual_evidence": "opening frame",
+                        "transcript_excerpt": "hello world",
+                        "inferred_purpose": "hook",
+                    }],
                     "ideas": [{"title": "Idea", "description": "Make it", "reasoning": "Evidence"}],
                 }),
                 encoding="utf-8",
@@ -196,7 +210,10 @@ class AnalyzeTests(TestCase):
             report = (root / "report.md").read_text()
             self.assertIn("visual from host agent", report)
             self.assertIn("- caption", report)
+            self.assertIn("hook", report)
             self.assertIn("Idea", report)
+            timeline = json.loads((root / "timeline.json").read_text())
+            self.assertEqual(timeline["timeline"][0]["inferred_purpose"], "hook")
 
     @mock.patch(
         "content_ai_runtime.analyze._run_transcription",

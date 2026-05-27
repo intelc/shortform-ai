@@ -97,9 +97,11 @@ title when Instagram exposes them.
 
 Video analysis also tries to write `contact_sheet.jpg` and always writes
 `report.md`, a rich Markdown overview that points at the contact sheet when
-available. Caption-heavy reels also get `onscreen_text.md`; `transcript.md` is
-the audio transcript, so it may contain music lyrics instead of the visible
-story text.
+available. Each analysis includes `timeline.md` and `timeline.json`, a
+reverse-engineered beat timeline grounded in detected shots and transcript
+windows. Caption-heavy reels also get `onscreen_text.md`; `transcript.md` is the
+audio transcript, so it may contain music lyrics instead of the visible story
+text.
 
 Development usage from a source checkout:
 
