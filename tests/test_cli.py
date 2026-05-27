@@ -254,6 +254,12 @@ class CLITests(TestCase):
             self.assertIn("shortform-ai setup transcription --local", text)
             self.assertIn("pipx install yt-dlp", text)
             self.assertIn("Do not use `npm`, `npx`, or `bunx`", text)
+            self.assertIn("## Account Analysis Mode", text)
+            self.assertIn("Select the five most recent reel/video candidates", text)
+            self.assertIn("Before launching per-reel analysis", text)
+            self.assertIn("first-use package injection can race", text)
+            self.assertIn("Do not call nested Codex, Claude", text)
+            self.assertIn("Product/process notes", text)
 
     def test_skill_install_accepts_direct_skill_dir(self):
         with tempfile.TemporaryDirectory() as tmp:

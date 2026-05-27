@@ -174,6 +174,69 @@ For one-prompt Instagram analysis, prefer `bootstrap analyze` with
 Instagram auth. Report the output directory and summarize the transcript,
 visual evidence, audio attribution, comments, and ideas from files on disk.
 
+## Account Analysis Mode
+
+When the user asks to analyze one or more Instagram accounts, start with the
+existing CLI; do not add or invoke extra scraping tools unless `account.json`
+does not contain enough recent reel candidates.
+
+For each requested account:
+
+1. Normalize the handle by removing a leading `@`.
+2. Run:
+   `shortform-ai account <handle> --limit <N> --out .shortform-ai/accounts/<handle>`
+   Use `N=12` unless the user asks for a different fetch size.
+3. Read `.shortform-ai/accounts/<handle>/account.json` and
+   `.shortform-ai/accounts/<handle>/account.md`.
+4. Select the five most recent reel/video candidates from `recent_media`,
+   preferring items where `product_type` is `clips`, `media_type` is `2`, or
+   `video_url_present` is `true`. If fewer than five are available, analyze the
+   available candidates and say that account coverage was limited.
+5. Derive candidate URLs from each media `code`:
+   `https://www.instagram.com/reel/<code>/` for clips/reels and
+   `https://www.instagram.com/p/<code>/` for other posts.
+6. Before launching per-reel analysis, run `shortform-ai doctor`. If no
+   `OPENAI_API_KEY` is configured and
+   `local_transcription.faster_whisper` is `false`, run
+   `shortform-ai setup transcription --local` once and wait for it to finish.
+   Do not start several `bootstrap analyze` commands before this setup is done,
+   because first-use package injection can race inside the same CLI environment.
+7. For each selected candidate, run the normal reel workflow:
+   `shortform-ai bootstrap analyze <url> --out .shortform-ai/accounts/<handle>/reels/<code> --comments-count 25`
+   Add `--instagram-from-chrome` only when the user has explicitly authorized
+   importing their own local Instagram session in this run.
+8. Complete each pending `agent_request.md` by inspecting that reel's artifacts,
+   writing `agent_response.json`, and running
+   `shortform-ai agent apply <reel-analysis-dir>`.
+
+If the active assistant environment provides first-class sub-agent or parallel
+analysis tools, use them after deterministic artifacts exist to inspect the
+selected reel directories in parallel. Each worker should produce a compact note
+with: hook, visual/editing pattern, format structure, audio/on-screen text,
+audience signal, what worked, what did not work, one reusable tactic, and
+caveats. Do not call nested Codex, Claude, or other agent CLIs just to get
+parallelism.
+
+Synthesize an account-level report after the per-reel passes. Cover:
+
+- Style: recurring format, pacing, framing, editing, on-screen text, audio,
+  topic choices, and production constraints.
+- Edge: the account's distinctive advantage or repeatable wedge.
+- What worked: patterns backed by metrics, comments, transcript, or visual
+  evidence from the analyzed reels.
+- What did not work: weak hooks, unclear stakes, pacing issues, mismatched
+  format, low audience signal, or missing payoff. Be specific and evidence-led.
+- Transferable moves: tactics the user can borrow without copying the creator.
+- Example video: one concrete reel the user can make, with hook, beat outline,
+  visuals, on-screen text, audio direction, and CTA.
+- Product/process notes: mention if the account-mode run exposed workflow
+  friction, missing metadata, OCR misses, rate limits, or setup issues that
+  should inform future CLI/tooling work.
+
+When multiple accounts are requested, report each account separately first, then
+compare their edges and finish with the strongest example video idea inspired by
+the set.
+
 ## Instagram Auth
 
 Only run `shortform-ai auth instagram --from-chrome` when the user explicitly asks to connect their own local Instagram session. Never print, copy, upload, or reveal session tokens. `comments` and `account` read from that local session only.
