@@ -3,7 +3,7 @@ class ShortformAi < Formula
 
   desc "Local-first CLI for short-form video and creator analysis"
   homepage "https://github.com/intelc/shortform-ai"
-  url "https://github.com/intelc/shortform-ai/archive/refs/tags/v0.1.11.tar.gz"
+  url "https://github.com/intelc/shortform-ai/archive/refs/tags/v0.1.12.tar.gz"
   sha256 "REPLACE_WITH_RELEASE_TARBALL_SHA256"
   license "MIT"
 
@@ -50,7 +50,7 @@ class ShortformAi < Formula
   end
 
   test do
-    assert_match "shortform-ai 0.1.11", shell_output("#{bin}/shortform-ai --version")
+    assert_match "shortform-ai 0.1.12", shell_output("#{bin}/shortform-ai --version")
     output = shell_output("#{bin}/shortform-ai doctor")
     assert_match "content_ai_version", output
     assert_match "shortform_ai_version", output
