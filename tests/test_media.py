@@ -64,3 +64,64 @@ class MediaTests(TestCase):
             command = run.call_args.args[0]
             self.assertIn("-vf", command)
             self.assertIn("tile=3x3", command[command.index("-vf") + 1])
+
+    @mock.patch("content_ai_runtime.xhs.requests.get")
+    def test_acquire_video_downloads_xhs_note_video_thumbnail_and_metadata(self, get):
+        note = {
+            "noteId": "69aa97da000000001d01204a",
+            "title": "Launch notes",
+            "desc": "The note body matters.",
+            "type": "video",
+            "user": {"userId": "u1", "nickname": "maker"},
+            "interactInfo": {"likedCount": "1.2万", "commentCount": "34"},
+            "video": {
+                "image": {"urlDefault": "https://sns-img.example/cover.jpg"},
+                "media": {
+                    "videoDuration": 12.5,
+                    "stream": {
+                        "h264": [{"masterUrl": "https://sns-video.example/video.mp4"}],
+                    },
+                },
+            },
+        }
+        state = {"note": {"noteDetailMap": {"69aa97da000000001d01204a": {"note": note}}}}
+        html = f"<script>window.__INITIAL_STATE__={json.dumps(state)}</script>"
+
+        class Response:
+            def __init__(self, *, text="", content=b"", url="https://www.xiaohongshu.com/explore/69aa97da000000001d01204a"):
+                self.text = text
+                self.content = content
+                self.url = url
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def raise_for_status(self):
+                return None
+
+            def iter_content(self, chunk_size):
+                yield self.content
+
+        get.side_effect = [
+            Response(text=html),
+            Response(content=b"fake-mp4"),
+            Response(content=b"fake-jpg"),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            video, acquisition = media.acquire_video(
+                "https://www.xiaohongshu.com/explore/69aa97da000000001d01204a?xsec_token=abc",
+                out,
+            )
+
+            self.assertEqual(acquisition, "downloaded_xhs")
+            self.assertEqual(video.read_bytes(), b"fake-mp4")
+            self.assertEqual((out / "xhs_thumbnail.jpg").read_bytes(), b"fake-jpg")
+            metadata = json.loads((out / "xhs_note.json").read_text(encoding="utf-8"))
+            self.assertEqual(metadata["caption"], "Launch notes\n\nThe note body matters.")
+            self.assertEqual(metadata["stats"]["likes"], 12000)
+            self.assertEqual(metadata["video_urls"], ["https://sns-video.example/video.mp4"])

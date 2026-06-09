@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shortform-ai"
-version = "0.1.15"
+version = "0.1.16"
 description = "Local-first CLI for short-form video and creator analysis"
 readme = "README.md"
 requires-python = ">=3.12"

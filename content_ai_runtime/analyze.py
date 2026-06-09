@@ -29,6 +29,7 @@ from .media import (
     is_url,
 )
 from .secrets import read_instagram_session
+from .xhs import XHS_METADATA_FILENAME
 
 import requests
 
@@ -445,6 +446,7 @@ def apply_agent_response(analysis_dir: Path, response_path: Path | None = None) 
     if not isinstance(fallback_timeline, list):
         fallback_timeline = []
     timeline = _normalize_timeline(response.get("timeline"), fallback_timeline)
+    xhs_metadata = media.get("xiaohongshu") if isinstance(media.get("xiaohongshu"), dict) else {}
 
     _write_text(analysis_dir / "visual.md", f"# Visual Analysis\n\n{response['visual_summary']}")
     _write_text(analysis_dir / "strategy.md", f"# Strategy\n\n{response['strategy_summary']}")
@@ -469,6 +471,7 @@ def apply_agent_response(analysis_dir: Path, response_path: Path | None = None) 
             ideas=response["ideas"],
             contact_sheet=contact_sheet_path,
             comments_note=audience_text or "No comments fetched for this analysis.",
+            xhs=xhs_metadata,
         ),
     )
 
@@ -528,7 +531,12 @@ def _fetch_instagram_metadata(source: str) -> tuple[dict, bool]:
     return metadata, True
 
 
-def _build_reel_payload(source: str, video_path: Path, duration: float | None, shots: list[dict], instagram: dict) -> dict:
+def _load_xhs_metadata(out_dir: Path) -> dict:
+    payload = _read_json(out_dir / XHS_METADATA_FILENAME, {})
+    return payload if isinstance(payload, dict) and payload.get("status") == "fetched" else {}
+
+
+def _build_reel_payload(source: str, video_path: Path, duration: float | None, shots: list[dict], instagram: dict, xhs: dict | None = None) -> dict:
     reel = {
         "source": source,
         "local_video": str(video_path),
@@ -540,16 +548,24 @@ def _build_reel_payload(source: str, video_path: Path, duration: float | None, s
         reel["instagram_audio"] = instagram.get("audio") or extract_instagram_audio_metadata({})
         reel["instagram_creator"] = instagram.get("creator") or {}
         reel["instagram_metrics"] = instagram.get("metrics") or {}
+    if xhs:
+        reel["xiaohongshu"] = xhs
+        reel["caption"] = xhs.get("caption") or xhs.get("desc") or xhs.get("title")
+        reel["creator"] = (xhs.get("author") or {}).get("nickname")
+        reel["thumbnail"] = xhs.get("local_thumbnail") or xhs.get("thumbnail_url")
     return reel
 
 
-def _build_media_payload(source: str, video_path: Path, duration: float | None, instagram: dict) -> dict:
-    return {
+def _build_media_payload(source: str, video_path: Path, duration: float | None, instagram: dict, xhs: dict | None = None) -> dict:
+    payload = {
         "source": source,
         "local_video": str(video_path),
         "duration": duration,
         "instagram": instagram,
     }
+    if xhs:
+        payload["xiaohongshu"] = xhs
+    return payload
 
 
 def _audio_line(instagram: dict) -> str:
@@ -609,6 +625,32 @@ def _metrics_line(instagram: dict) -> str:
     if metrics.get("taken_at_iso"):
         rendered.append(f"Posted: {metrics['taken_at_iso']}")
     return "; ".join(rendered) if rendered else "Unavailable"
+
+
+def _xhs_lines(xhs: dict | None) -> list[str]:
+    if not xhs:
+        return []
+    author = xhs.get("author") or {}
+    stats = xhs.get("stats") or {}
+    stat_labels = [
+        ("Likes", stats.get("likes")),
+        ("Collections", stats.get("collections")),
+        ("Comments", stats.get("comments")),
+        ("Shares", stats.get("shares")),
+    ]
+    rendered_stats = [f"{label}: {formatted}" for label, value in stat_labels if (formatted := _format_count(value))]
+    lines = ["", "## Xiaohongshu Note", ""]
+    if title := xhs.get("title"):
+        lines.append(f"Title: {title}")
+    if nickname := author.get("nickname"):
+        lines.append(f"Author: {nickname}")
+    if rendered_stats:
+        lines.append(f"Stats: {'; '.join(rendered_stats)}")
+    if thumbnail := xhs.get("local_thumbnail") or xhs.get("thumbnail_url"):
+        lines.append(f"Thumbnail: {thumbnail}")
+    if desc := xhs.get("desc"):
+        lines.extend(["", str(desc).strip()])
+    return lines
 
 
 def _format_on_screen_text(lines: list[str]) -> str:
@@ -731,6 +773,7 @@ def _render_report(
     ideas: list,
     contact_sheet: Path | None,
     comments_note: str,
+    xhs: dict | None = None,
 ) -> str:
     lines = [
         "# Shortform AI Report",
@@ -750,6 +793,7 @@ def _render_report(
         lines.append(f"![Contact sheet]({_artifact_link_path(contact_sheet, out_dir)})")
     else:
         lines.append("Contact sheet was not generated in this environment.")
+    lines.extend(_xhs_lines(xhs))
     transcript_excerpt = transcript_text.strip()
     if len(transcript_excerpt) > 900:
         transcript_excerpt = transcript_excerpt[:897].rstrip() + "..."
@@ -827,6 +871,7 @@ def analyze_source(
         contact_sheet = create_contact_sheet(video_path, out_dir / "contact_sheet.jpg", duration=duration)
         progress("Fetching Instagram metadata when available.")
         instagram_metadata, instagram_session_used = _fetch_instagram_metadata(source)
+        xhs_metadata = _load_xhs_metadata(out_dir)
     except Exception as exc:
         manifest = {
             "content_ai_version": __version__,
@@ -884,14 +929,15 @@ def analyze_source(
                 "instagram_metadata": instagram_metadata.get("status") == "fetched",
                 "instagram_creator": _has_present_value(instagram_metadata.get("creator") or {}),
                 "instagram_metrics": _has_present_value(instagram_metadata.get("metrics") or {}),
+                "xiaohongshu_metadata": bool(xhs_metadata),
             },
             "artifacts": REQUIRED_ARTIFACTS,
-            "optional_artifacts": ["contact_sheet.jpg"] if contact_sheet else [],
+            "optional_artifacts": (["contact_sheet.jpg"] if contact_sheet else []) + ([XHS_METADATA_FILENAME] if xhs_metadata else []),
         }
-        reel = _build_reel_payload(source, video_path, duration, shots, instagram_metadata)
+        reel = _build_reel_payload(source, video_path, duration, shots, instagram_metadata, xhs_metadata)
         _write_json(out_dir / "manifest.json", manifest)
         _write_json(out_dir / "reel.json", reel)
-        _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata))
+        _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata, xhs_metadata))
         _write_json(out_dir / "shots.json", {"shots": shots})
         _write_json(out_dir / "timeline.json", {"timeline": timeline})
         _write_text(out_dir / "timeline.md", _render_timeline_markdown(timeline))
@@ -920,6 +966,7 @@ def analyze_source(
                 ideas=[],
                 contact_sheet=contact_sheet,
                 comments_note="No comments fetched for this analysis.",
+                xhs=xhs_metadata,
             ),
         )
         return 2, transcription_warning
@@ -1010,16 +1057,21 @@ def analyze_source(
             "instagram_metadata": instagram_metadata.get("status") == "fetched",
             "instagram_creator": _has_present_value(instagram_metadata.get("creator") or {}),
             "instagram_metrics": _has_present_value(instagram_metadata.get("metrics") or {}),
+            "xiaohongshu_metadata": bool(xhs_metadata),
         },
         "artifacts": REQUIRED_ARTIFACTS,
-        "optional_artifacts": (["contact_sheet.jpg"] if contact_sheet else []) + (AGENT_ARTIFACTS if ai_mode == "agent" else []),
+        "optional_artifacts": (
+            (["contact_sheet.jpg"] if contact_sheet else [])
+            + ([XHS_METADATA_FILENAME] if xhs_metadata else [])
+            + (AGENT_ARTIFACTS if ai_mode == "agent" else [])
+        ),
     }
 
-    reel = _build_reel_payload(source, video_path, duration, shots, instagram_metadata)
+    reel = _build_reel_payload(source, video_path, duration, shots, instagram_metadata, xhs_metadata)
 
     _write_json(out_dir / "manifest.json", manifest)
     _write_json(out_dir / "reel.json", reel)
-    _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata))
+    _write_json(out_dir / "media.json", _build_media_payload(source, video_path, duration, instagram_metadata, xhs_metadata))
     _write_json(out_dir / "shots.json", {"shots": shots})
     _write_json(out_dir / "timeline.json", {"timeline": timeline})
     _write_text(out_dir / "timeline.md", _render_timeline_markdown(timeline))
@@ -1048,6 +1100,7 @@ def analyze_source(
             ideas=ideas,
             contact_sheet=contact_sheet,
             comments_note="No comments fetched for this analysis.",
+            xhs=xhs_metadata,
         ),
     )
 

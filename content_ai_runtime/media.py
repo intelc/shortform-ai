@@ -131,6 +131,11 @@ def extract_audio(video_path: Path, audio_path: Path) -> bool:
 def acquire_video(source: str, output_dir: Path) -> tuple[Path, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     if is_url(source):
+        from .xhs import download_xhs_video, is_xhs_url
+
+        if is_xhs_url(source):
+            return download_xhs_video(source, output_dir), "downloaded_xhs"
+
         yt_dlp = command_path("yt-dlp")
         if not yt_dlp:
             raise RuntimeError("yt-dlp is required to download URLs. Install yt-dlp or pass a local file.")

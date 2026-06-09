@@ -2,6 +2,10 @@
 
 Local-first CLI for short-form video and creator analysis.
 
+Supports local files plus public short-form URLs including Instagram Reels,
+Xiaohongshu / RedNote notes, TikTok, YouTube Shorts, and X/Twitter when the
+underlying downloader can access them.
+
 Recommended persistent install for repeated agent use:
 
 ```bash
